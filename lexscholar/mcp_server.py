@@ -1,0 +1,400 @@
+"""Dependency-free MCP server exposing the federation through ONE endpoint.
+
+Same stdlib JSON-RPC implementation as the sibling ``eqanun`` and
+``resourcecontracts`` servers, so it runs on a stock Python 3.9 with no pip
+installs and no ``mcp`` SDK.
+
+The design point: nine upstream indexes, **one** ``/mcp`` endpoint and one
+connector. ``source`` is a tool parameter, not another deployment — adding a
+tenth index later changes nothing for the agent or the Copilot Studio connector.
+
+Transports: stdio (desktop clients) and Streamable HTTP at ``/mcp`` (remote
+connectors), no authentication.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, Dict, List, Optional, Tuple
+
+from ._http import LexScholarError
+from .client import LexScholarClient
+
+SERVER_NAME = "lex-scholar-api"
+SERVER_VERSION = "0.1.0"
+
+_SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
+_DEFAULT_PROTOCOL = "2025-06-18"
+
+_client = LexScholarClient()
+
+
+# --------------------------------------------------------------------------- #
+# Tools                                                                        #
+# --------------------------------------------------------------------------- #
+def _t_search_articles(a: Dict[str, Any]) -> Any:
+    return _client.search(
+        a.get("query", ""),
+        source=a.get("source", "auto"),
+        jurisdiction=a.get("jurisdiction"),
+        language=a.get("language"),
+        year_from=a.get("year_from"),
+        year_to=a.get("year_to"),
+        peer_reviewed_only=bool(a.get("peer_reviewed_only", False)),
+        open_access_only=bool(a.get("open_access_only", False)),
+        full_text_only=bool(a.get("full_text_only", False)),
+        limit=int(a.get("limit", 20)),
+        max_sources=a.get("max_sources"),
+    )
+
+
+def _t_compare_jurisdictions(a: Dict[str, Any]) -> Any:
+    return _client.compare_jurisdictions(
+        a["query"],
+        list(a.get("jurisdictions") or []),
+        limit_per=int(a.get("limit_per", 5)),
+        peer_reviewed_only=bool(a.get("peer_reviewed_only", False)),
+        year_from=a.get("year_from"),
+        year_to=a.get("year_to"),
+    )
+
+
+def _t_get_article(a: Dict[str, Any]) -> Any:
+    extra = {k: a[k] for k in ("collection",) if a.get(k)}
+    return _client.get_article(a["source"], a["id"], **extra)
+
+
+def _t_get_article_fulltext(a: Dict[str, Any]) -> Any:
+    extra = {k: a[k] for k in ("collection",) if a.get(k)}
+    return _client.get_fulltext(
+        a["source"], a["id"],
+        offset=int(a.get("offset", 0)),
+        max_chars=int(a.get("max_chars", 20000)),
+        **extra,
+    )
+
+
+def _t_resolve_doi(a: Dict[str, Any]) -> Any:
+    return _client.resolve_doi(a["doi"])
+
+
+def _t_list_sources(a: Dict[str, Any]) -> Any:
+    return {"sources": _client.list_sources()}
+
+
+_STR = {"type": "string"}
+_INT = {"type": "integer"}
+_BOOL = {"type": "boolean", "default": False}
+
+_FILTERS = {
+    "jurisdiction": {"type": "string",
+                     "description": "ISO alpha-2 country code, e.g. FR, BR, ID, TR, AZ. "
+                                    "Routes to that country's native index."},
+    "language": {"type": "string", "description": "ISO language code, e.g. es, fr, pt, tr."},
+    "year_from": _INT,
+    "year_to": _INT,
+    "peer_reviewed_only": {"type": "boolean", "default": False,
+                           "description": "Keep only sources/records that guarantee peer review. "
+                                          "Excludes preprints and US student-edited law reviews."},
+    "open_access_only": _BOOL,
+}
+
+TOOLS: List[Dict[str, Any]] = [
+    {
+        "name": "search_articles",
+        "description": (
+            "Search open-access legal scholarship across nine indexes through one "
+            "endpoint. A deterministic router picks the 2-3 sources that fit the "
+            "question (language, jurisdiction, topic) instead of querying all of "
+            "them, and the response always reports sources_queried, "
+            "sources_skipped (with reasons) and routing_reasons. Results are "
+            "normalized, deduplicated across sources and re-ranked. Use "
+            "peer_reviewed_only=true when the answer must rest on peer-reviewed "
+            "work. Set source to a specific index (doaj, hal, scielo, dialnet, "
+            "openaire, lawreviewcommons, openalex) or 'all' to override routing."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Free text. Quote a phrase to force it."},
+                "source": {"type": "string", "default": "auto",
+                           "description": "auto (default) | all | a source name | comma-separated list"},
+                "full_text_only": {"type": "boolean", "default": False,
+                                   "description": "Only sources that can return body text (SciELO, HAL)."},
+                "limit": {"type": "integer", "default": 20},
+                "max_sources": {"type": "integer", "description": "Cap how many indexes are queried."},
+                **_FILTERS,
+            },
+        },
+        "handler": _t_search_articles,
+    },
+    {
+        "name": "compare_jurisdictions",
+        "description": (
+            "Run one legal question across several jurisdictions at once and get "
+            "the answers grouped by country rather than merged. Each jurisdiction "
+            "is routed to its own native index (Brazil to SciELO, France to HAL, "
+            "Spain to Dialnet, Indonesia and Poland to DOAJ, Azerbaijan to "
+            "OpenAlex), which is what makes comparative work possible in one call. "
+            "Reports which jurisdictions returned nothing instead of hiding them."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": _STR,
+                "jurisdictions": {"type": "array", "items": {"type": "string"},
+                                  "description": "ISO alpha-2 codes, e.g. ['FR','BR','ID','TR']"},
+                "limit_per": {"type": "integer", "default": 5},
+                "peer_reviewed_only": {"type": "boolean", "default": False},
+                "year_from": _INT,
+                "year_to": _INT,
+            },
+            "required": ["query", "jurisdictions"],
+        },
+        "handler": _t_compare_jurisdictions,
+    },
+    {
+        "name": "get_article",
+        "description": "Full normalized metadata for one article, by source and id "
+                       "(ids come from search_articles results).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source": _STR, "id": _STR,
+                "collection": {"type": "string", "description": "SciELO only, e.g. scl, chl, mex."},
+            },
+            "required": ["source", "id"],
+        },
+        "handler": _t_get_article,
+    },
+    {
+        "name": "get_article_fulltext",
+        "description": (
+            "Return an article's body text as clean plain text, paginated by "
+            "characters (offset + max_chars). SciELO serves real full text; other "
+            "sources may only expose a PDF link, in which case the abstract plus "
+            "pdf_url/landing_url are returned and 'note' says so. Never claims "
+            "text it could not fetch."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source": _STR, "id": _STR,
+                "collection": _STR,
+                "offset": {"type": "integer", "default": 0},
+                "max_chars": {"type": "integer", "default": 20000},
+            },
+            "required": ["source", "id"],
+        },
+        "handler": _t_get_article_fulltext,
+    },
+    {
+        "name": "resolve_doi",
+        "description": "Resolve a DOI to authoritative metadata (Crossref) plus its "
+                       "best legally-free copy (Unpaywall).",
+        "inputSchema": {"type": "object", "properties": {"doi": _STR}, "required": ["doi"]},
+        "handler": _t_resolve_doi,
+    },
+    {
+        "name": "list_sources",
+        "description": "Capability card for every index: auth model, whether peer review "
+                       "is guaranteed, full-text support, jurisdictions, volume, cost, and "
+                       "the live OpenAlex rate-limit budget.",
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": _t_list_sources,
+    },
+]
+
+_TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
+
+
+def _public_tools() -> List[Dict[str, Any]]:
+    return [{"name": t["name"], "description": t["description"],
+             "inputSchema": t["inputSchema"]} for t in TOOLS]
+
+
+# --------------------------------------------------------------------------- #
+# JSON-RPC dispatch                                                            #
+# --------------------------------------------------------------------------- #
+def _ok(msg_id: Any, result: Any) -> Dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": msg_id, "result": result}
+
+
+def _err(msg_id: Any, code: int, message: str) -> Dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}}
+
+
+def _negotiate(requested: Optional[str]) -> str:
+    return requested if requested in _SUPPORTED_PROTOCOLS else _DEFAULT_PROTOCOL
+
+
+def dispatch(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Handle one JSON-RPC message; None for notifications."""
+    method = message.get("method")
+    msg_id = message.get("id")
+    params = message.get("params") or {}
+    is_notification = "id" not in message
+
+    if method == "initialize":
+        return _ok(msg_id, {
+            "protocolVersion": _negotiate(params.get("protocolVersion")),
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+        })
+    if method in ("notifications/initialized", "initialized"):
+        return None
+    if method == "ping":
+        return _ok(msg_id, {})
+    if method == "tools/list":
+        return _ok(msg_id, {"tools": _public_tools()})
+    if method == "tools/call":
+        name = params.get("name")
+        args = params.get("arguments") or {}
+        tool = _TOOLS_BY_NAME.get(name)
+        if tool is None:
+            return _err(msg_id, -32602, "unknown tool: %s" % name)
+        try:
+            result = tool["handler"](args)
+            text = json.dumps(result, ensure_ascii=False, indent=2, default=str)
+            return _ok(msg_id, {"content": [{"type": "text", "text": text}], "isError": False})
+        except (LexScholarError, ValueError, KeyError, TypeError) as exc:
+            return _ok(msg_id, {"content": [{"type": "text", "text": "error: %s" % exc}],
+                                "isError": True})
+    if is_notification:
+        return None
+    return _err(msg_id, -32601, "method not found: %s" % method)
+
+
+def _handle_payload(payload: Any) -> Tuple[Optional[Any], bool]:
+    if isinstance(payload, list):
+        responses = [r for r in (dispatch(m) for m in payload) if r is not None]
+        return (responses or None), bool(responses)
+    resp = dispatch(payload)
+    return resp, resp is not None
+
+
+# --------------------------------------------------------------------------- #
+# stdio transport                                                              #
+# --------------------------------------------------------------------------- #
+def run_stdio() -> None:
+    """Serve MCP over line-delimited JSON-RPC on stdin/stdout."""
+    out = sys.stdout
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except ValueError:
+            out.write(json.dumps(_err(None, -32700, "parse error")) + "\n")
+            out.flush()
+            continue
+        resp, _ = _handle_payload(payload)
+        if resp is not None:
+            out.write(json.dumps(resp, ensure_ascii=False, default=str) + "\n")
+            out.flush()
+
+
+# --------------------------------------------------------------------------- #
+# Streamable HTTP transport (no auth)                                          #
+# --------------------------------------------------------------------------- #
+_CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers":
+        "Content-Type, Mcp-Session-Id, MCP-Protocol-Version, Authorization, Accept",
+    "Access-Control-Expose-Headers": "Mcp-Session-Id",
+}
+
+
+class _MCPHandler(BaseHTTPRequestHandler):
+    server_version = "%s/%s" % (SERVER_NAME, SERVER_VERSION)
+    endpoint = "/mcp"
+
+    def _send(self, status: int, body: Optional[bytes] = None,
+              content_type: str = "application/json",
+              extra: Optional[Dict[str, str]] = None) -> None:
+        self.send_response(status)
+        for k, v in _CORS.items():
+            self.send_header(k, v)
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        if body is not None:
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body is not None:
+            self.wfile.write(body)
+
+    def _send_sse(self, obj: Any, extra: Optional[Dict[str, str]] = None) -> None:
+        self.send_response(200)
+        for k, v in _CORS.items():
+            self.send_header(k, v)
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(("data: " + json.dumps(obj, ensure_ascii=False, default=str) +
+                          "\n\n").encode("utf-8"))
+        self.wfile.flush()
+
+    def _path_ok(self) -> bool:
+        path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        return path in (self.endpoint, "/")
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self._send(204)
+
+    def do_GET(self) -> None:  # noqa: N802
+        self._send(405, b'{"error":"method not allowed; use POST"}')
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        self._send(204)
+
+    def do_POST(self) -> None:  # noqa: N802
+        if not self._path_ok():
+            self._send(404, b'{"error":"not found; POST to /mcp"}')
+            return
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        raw = self.rfile.read(length) if length else b""
+        try:
+            payload = json.loads(raw.decode("utf-8")) if raw else {}
+        except (ValueError, UnicodeDecodeError):
+            self._send(400, json.dumps(_err(None, -32700, "parse error")).encode("utf-8"))
+            return
+
+        extra: Dict[str, str] = {}
+        if isinstance(payload, dict) and payload.get("method") == "initialize":
+            extra["Mcp-Session-Id"] = os.urandom(16).hex()
+
+        resp, had_requests = _handle_payload(payload)
+        if not had_requests:
+            self._send(202, extra=extra or None)
+            return
+        if "text/event-stream" in self.headers.get("Accept", ""):
+            self._send_sse(resp, extra=extra or None)
+        else:
+            self._send(200, json.dumps(resp, ensure_ascii=False, default=str).encode("utf-8"),
+                       extra=extra or None)
+
+    def log_message(self, fmt: str, *args: Any) -> None:
+        pass
+
+
+def run_http(host: str = "0.0.0.0", port: int = 8000) -> None:
+    """Serve MCP over Streamable HTTP (no auth) at http://host:port/mcp."""
+    httpd = ThreadingHTTPServer((host, port), _MCPHandler)
+    sys.stderr.write("%s MCP (Streamable HTTP, no auth) on http://%s:%d/mcp\n"
+                     % (SERVER_NAME, host, port))
+    sys.stderr.flush()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
