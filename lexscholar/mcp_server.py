@@ -400,9 +400,22 @@ class _MCPHandler(BaseHTTPRequestHandler):
         pass
 
 
+class _SingleBindHTTPServer(ThreadingHTTPServer):
+    """Refuse to start when the port is already served.
+
+    ``HTTPServer`` sets ``allow_reuse_address = 1``. On Windows that lets a
+    SECOND process bind a port another server is already listening on, and
+    connections keep going to the first one — so a restarted server silently
+    serves stale code while looking healthy. Turning it off makes the second
+    start fail loudly with "address already in use", which is the honest answer.
+    """
+
+    allow_reuse_address = False
+
+
 def run_http(host: str = "0.0.0.0", port: int = 8000) -> None:
     """Serve MCP over Streamable HTTP (no auth) at http://host:port/mcp."""
-    httpd = ThreadingHTTPServer((host, port), _MCPHandler)
+    httpd = _SingleBindHTTPServer((host, port), _MCPHandler)
     sys.stderr.write("%s MCP (Streamable HTTP, no auth) on http://%s:%d/mcp\n"
                      % (SERVER_NAME, host, port))
     sys.stderr.flush()
