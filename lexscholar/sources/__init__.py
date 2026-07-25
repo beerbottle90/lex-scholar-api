@@ -19,6 +19,7 @@ from typing import Any, Dict, List
 
 from . import (
     crossref,
+    dergipark,
     dialnet,
     doaj,
     hal,
@@ -31,6 +32,7 @@ from . import (
 
 REGISTRY: Dict[str, ModuleType] = {
     doaj.NAME: doaj,
+    dergipark.NAME: dergipark,
     lawreviewcommons.NAME: lawreviewcommons,
     scielo.NAME: scielo,
     hal.NAME: hal,
@@ -45,7 +47,7 @@ REGISTRY: Dict[str, ModuleType] = {
 # Unpaywall are resolvers (DOI-driven), so they are not in the discovery pool.
 DISCOVERY: List[str] = [
     doaj.NAME, lawreviewcommons.NAME, scielo.NAME, hal.NAME,
-    dialnet.NAME, openaire.NAME, openalex.NAME,
+    dialnet.NAME, dergipark.NAME, openaire.NAME, openalex.NAME,
 ]
 
 RESOLVERS: List[str] = [crossref.NAME, unpaywall.NAME]

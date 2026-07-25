@@ -53,7 +53,7 @@ _COUNTRY_SOURCES: Dict[str, List[str]] = {
     "RO": ["doaj", "openaire"],
     "RU": ["doaj", "openalex"],
     "UA": ["doaj", "openaire"],
-    "TR": ["doaj", "openalex"],
+    "TR": ["dergipark", "doaj", "openalex"],
     "ID": ["doaj"],
     "IR": ["doaj"],
     "EG": ["doaj"],
@@ -105,7 +105,7 @@ _LANG_SOURCES: Dict[str, List[str]] = {
     "es": ["dialnet", "scielo", "doaj"],
     "pt": ["scielo", "doaj"],
     "en": ["doaj", "lawreviewcommons"],
-    "tr": ["doaj", "openalex"],
+    "tr": ["dergipark", "doaj", "openalex"],
     "de": ["openaire", "doaj"],
     "ru": ["doaj", "openalex"],
 }

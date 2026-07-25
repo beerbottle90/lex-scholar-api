@@ -5,7 +5,7 @@ open-access **legal scholarship** indexes, for the SOCAR L&C agents (Copilot
 Studio Digital Twin and the Claude Assistant).
 
 > Status (2026-07-25): **working, 20/20 live tests passing.** One `/mcp`
-> endpoint, nine upstream indexes, no authentication anywhere, pure Python
+> endpoint, ten upstream indexes, no authentication anywhere, pure Python
 > standard library on a stock Python 3.9+. Built to the same template as the
 > sibling [`eqanun-api`](../eqanun-api) and
 > [`resourcecontracts-api`](../resourcecontracts-api).
@@ -39,6 +39,7 @@ own native index — the contrast is the deliverable, not a merged ranking.
 | **SciELO** | `v440` ⊃ DIREITO/DERECHO | curated | **real body text** | 26,003 articles, 36 collections |
 | **HAL** (FR) | `domainAllCode_s:shs.droit` | `peerReviewing_s` flag | PDF + TEI | 236,486 / 26,422 OA |
 | **Dialnet** (ES) | `set=18` Ciencias jurídicas | mixed | ✗ discovery only | 95,402 |
+| **DergiPark** (TR) | curated law-journal setSpecs | unknown (mostly hakemli) | abstract + link | 7 curated law journals |
 | **OpenAIRE** | `fos=0505 law` | `isPeerReviewed` flag | link | 582,820 |
 | **Crossref** | — | — | — | DOI resolver |
 | **Unpaywall** | — | — | locator | DOI → open copy |
@@ -124,7 +125,7 @@ rotate every run; use a named Cloudflare tunnel for a stable URL.
 |---|---|
 | DOI in the query | Crossref + Unpaywall only — discovery skipped |
 | `jurisdiction=` | that country's native index (BR→SciELO, FR→HAL, ES→Dialnet, AZ→OpenAlex) |
-| query language | es/pt→SciELO+Dialnet, fr→HAL, de→OpenAIRE, tr/ru→DOAJ+OpenAlex |
+| query language | es/pt→SciELO+Dialnet, fr→HAL, de→OpenAIRE, **tr→DergiPark+DOAJ**, ru→DOAJ+OpenAlex |
 | energy/arbitration vocabulary | + Law Review Commons (suppressed if the query is scoped to a non-US country) |
 | `peer_reviewed_only=true` | drops preprint and student-edited sources |
 | OpenAlex budget low | OpenAlex skipped before it 429s, with the reason reported |

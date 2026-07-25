@@ -123,6 +123,52 @@ harvest with client-side matching.
 
 ---
 
+## 5b. DergiPark — `https://dergipark.org.tr/api/public/oai/`
+
+Turkish academic journals (TÜBİTAK ULAKBİM), reached through **DergiPark's own
+published OAI-PMH interface** — no key, no CAPTCHA.
+
+This deserves a note, because the widely-used third-party `literatur-mcp` gets
+the same content by driving a stealth browser (Camoufox) through DergiPark's bot
+protection with a **paid CapSolver key**. Measured 2026-07-25, that stack's
+search hung past 25s with no response while its MCP handshake still answered in
+0.2s — a broken CAPTCHA/scraping pipeline behind a healthy MCP layer. The
+official endpoint answered the same session in **0.2–0.5s**. So this adapter
+uses the front door; nothing here defeats a bot protection.
+
+| Verb | Result |
+|---|---|
+| `Identify` | 200, `repositoryName: DergiPark`, protocol 2.0 |
+| `ListMetadataFormats` | `oai_dc`, `oai_etdms`, `oai_marc`, `oai_mods` |
+| `ListRecords` | 200, 100 records/page with `resumptionToken` |
+| `ListSets` | 200 — but **caps at 100 sets with no `resumptionToken`** |
+
+Records carry title, `dc:creator` (authors), **`dc:description` (abstract)**,
+`dc:subject`, `dc:source` (journal), `dc:date`, `dc:language` and the article
+URL. Header id looks like `oai:dergipark.org.tr:article/1002051`.
+
+**Traps handled in the adapter:**
+
+- **Rate limiting.** Roughly ten rapid requests earn a `429`; calls are spaced
+  2 s.
+- **`ListSets` truncation.** DergiPark hosts thousands of journals but exposes
+  only 100 sets there. A `setSpec` still works when absent from that page —
+  verified with `auhfd`, `iuhfm`, `deuhfd` — so law journals are reached through
+  a curated, individually-verified list rather than enumeration.
+- **No free-text search** (inherent to OAI-PMH), so the journal set is the
+  filter and matching happens client-side — same shape as Dialnet and Law Review
+  Commons.
+- **Verify before adding a code.** `ashd` looks plausible but returns medical
+  articles; an unverified `setSpec` silently yields nothing.
+- `earliestDatestamp` reports the current day, which is misleading — date-window
+  queries do return older records (2015, 2020 and 2024 windows all did).
+
+Curated law journals: `maruhad`, `auhfd`, `iuhfm`, `deuhfd`, `iuihid`,
+`iuchkd`, `adaletdergisi`.
+
+`peer_reviewed` is left `None`: most DergiPark journals are hakemli, but
+`oai_dc` carries no review-process field, so it is not asserted.
+
 ## 6. OpenAIRE Graph — `https://api.openaire.eu/graph/v1`
 
 `GET /researchProducts?search=&fos=0505%20law&type=publication&pageSize=&page=`
@@ -170,6 +216,7 @@ as an inverted index and must be rebuilt.
 | SciELO | none | ⚠ substring | ✅ body text | ✅ verified |
 | HAL | none | ✅ native | ✅ PDF/TEI | ✅ verified |
 | Dialnet | none | ✅ native set | ❌ by policy | ✅ verified |
+| DergiPark | none | ⚠ curated setSpecs | abstract+link | ✅ verified |
 | OpenAIRE | none | ✅ fos | link | ✅ verified |
 | Crossref | none | ❌ broken | link | ✅ verified |
 | Unpaywall | email param | — | locator | ✅ verified |

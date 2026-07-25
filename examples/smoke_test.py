@@ -44,6 +44,7 @@ def main() -> int:
         ("droit de l'energie", {}, "hal"),
         ("mineracao", {"jurisdiction": "BR"}, "scielo"),
         ("oil law", {"jurisdiction": "AZ"}, "openalex"),
+        ("tahkim", {"jurisdiction": "TR"}, "dergipark"),
     ]
     for q, kw, expected in cases:
         plan = route(q, **kw)
@@ -111,7 +112,7 @@ def main() -> int:
 
     print("\n8) capability cards")
     cards = c.list_sources()
-    check("nine sources registered", len(cards) == 9, "%d" % len(cards))
+    check("ten sources registered", len(cards) == 10, "%d" % len(cards))
     check("openalex reports its metered budget",
           any(s["name"] == "openalex" and "budget" in s for s in cards))
 
