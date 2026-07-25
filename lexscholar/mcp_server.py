@@ -114,7 +114,12 @@ TOOLS: List[Dict[str, Any]] = [
             "normalized, deduplicated across sources and re-ranked. Use "
             "peer_reviewed_only=true when the answer must rest on peer-reviewed "
             "work. Set source to a specific index (doaj, hal, scielo, dialnet, "
-            "openaire, lawreviewcommons, openalex) or 'all' to override routing."
+            "openaire, lawreviewcommons, openalex) or 'all' to override routing. "
+            "IMPORTANT: query in the LANGUAGE OF THE TARGET JURISDICTION — these "
+            "indexes match the article's own words, so 'force majeure' returns "
+            "nothing from Brazil while 'forca maior' or 'caso fortuito' does. For "
+            "a non-English jurisdiction, search the local legal term (and repeat "
+            "in English only if you also want anglophone commentary)."
         ),
         "inputSchema": {
             "type": "object",
@@ -139,7 +144,13 @@ TOOLS: List[Dict[str, Any]] = [
             "is routed to its own native index (Brazil to SciELO, France to HAL, "
             "Spain to Dialnet, Indonesia and Poland to DOAJ, Azerbaijan to "
             "OpenAlex), which is what makes comparative work possible in one call. "
-            "Reports which jurisdictions returned nothing instead of hiding them."
+            "Reports which jurisdictions returned nothing instead of hiding them. "
+            "IMPORTANT: one English query will under-report non-anglophone "
+            "jurisdictions, because each index matches the article's own language "
+            "('force majeure' finds nothing in Brazil; 'forca maior' does). For a "
+            "fair comparison, run this once per language group using the local "
+            "legal term, or treat an empty group as 'not found in this language', "
+            "never as 'no scholarship exists'."
         ),
         "inputSchema": {
             "type": "object",

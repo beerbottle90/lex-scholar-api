@@ -8,7 +8,7 @@
       "name": "SOCAR L&C Digital Twin Team"
     }
   },
-  "host": "REPLACE-WITH-YOUR-PUBLIC-HTTPS-HOST",
+  "host": "advantage-mat-vehicle-decades.trycloudflare.com",
   "basePath": "/",
   "schemes": [
     "https"
