@@ -99,10 +99,10 @@ Env fallbacks: `LEXSCHOLAR_MCP_TRANSPORT`, `LEXSCHOLAR_MCP_HOST`, `LEXSCHOLAR_MC
 
 | Tool | Purpose |
 |---|---|
-| `search_articles` | routed federated search; reports `sources_queried`, `sources_skipped`, `routing_reasons` |
+| `search_legal_scholarship` | routed federated search; reports `sources_queried`, `sources_skipped`, `routing_reasons` |
 | `compare_jurisdictions` | one question across N countries, grouped per jurisdiction |
-| `get_article` | full normalized metadata by source + id |
-| `get_article_fulltext` | body text, paginated; says so when only a PDF link exists |
+| `get_scholarship_article` | full normalized metadata by source + id |
+| `get_scholarship_fulltext` | body text, paginated; says so when only a PDF link exists |
 | `resolve_doi` | Crossref metadata + Unpaywall open copy |
 | `list_sources` | capability cards incl. live OpenAlex budget |
 
@@ -143,7 +143,7 @@ multi-jurisdiction comparison, full text, DOI resolution and capability cards.
 
 ## Verification highlights (2026-07-25)
 
-- `search_articles("stabilization clause", peer_reviewed_only=true)` → top hit
+- `search_legal_scholarship("stabilization clause", peer_reviewed_only=true)` → top hit
   *"The Stabilization Clause of the Baku-Tbilisi-Ceyhan Pipeline"*, 0.4s, DOAJ only.
 - `compare_jurisdictions("arbitration", [FR,BR,ID,AZ])` → all four answered, each
   via its own index (`hal`, `scielo`, `doaj`, `openalex`).

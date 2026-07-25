@@ -63,6 +63,9 @@ def _t_compare_jurisdictions(a: Dict[str, Any]) -> Any:
 
 
 def _t_get_article(a: Dict[str, Any]) -> Any:
+    # NB: the MCP *tool* is exposed as get_scholarship_article (renamed to avoid
+    # colliding with DergiPark's tools in a multi-MCP agent), but the client
+    # method it calls is still LexScholarClient.get_article.
     extra = {k: a[k] for k in ("collection",) if a.get(k)}
     return _client.get_article(a["source"], a["id"], **extra)
 
@@ -104,7 +107,7 @@ _FILTERS = {
 
 TOOLS: List[Dict[str, Any]] = [
     {
-        "name": "search_articles",
+        "name": "search_legal_scholarship",
         "description": (
             "Search open-access legal scholarship across nine indexes through one "
             "endpoint. A deterministic router picks the 2-3 sources that fit the "
@@ -168,9 +171,9 @@ TOOLS: List[Dict[str, Any]] = [
         "handler": _t_compare_jurisdictions,
     },
     {
-        "name": "get_article",
+        "name": "get_scholarship_article",
         "description": "Full normalized metadata for one article, by source and id "
-                       "(ids come from search_articles results).",
+                       "(ids come from search_legal_scholarship results).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -182,7 +185,7 @@ TOOLS: List[Dict[str, Any]] = [
         "handler": _t_get_article,
     },
     {
-        "name": "get_article_fulltext",
+        "name": "get_scholarship_fulltext",
         "description": (
             "Return an article's body text as clean plain text, paginated by "
             "characters (offset + max_chars). SciELO serves real full text; other "

@@ -18,8 +18,12 @@ Transports
 Env fallbacks: LEXSCHOLAR_MCP_TRANSPORT, LEXSCHOLAR_MCP_HOST, LEXSCHOLAR_MCP_PORT.
 Optional: OPENALEX_API_KEY raises the metered OpenAlex budget ~100x.
 
-Tools: search_articles, compare_jurisdictions, get_article,
-get_article_fulltext, resolve_doi, list_sources.
+Tools: search_legal_scholarship, compare_jurisdictions, get_scholarship_article,
+get_scholarship_fulltext, resolve_doi, list_sources.
+
+The scholarship-prefixed names are deliberate: in a multi-MCP agent a generic
+``search_articles`` collides with DergiPark's tool of the same name, and the
+agent then sends one server's parameters to the other.
 """
 
 from __future__ import annotations

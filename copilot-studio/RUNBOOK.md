@@ -53,8 +53,8 @@ Not `https://xxxx…`, not `…/mcp`. The scheme lives in `schemes` and the path
 Copilot Studio → your agent → **Tools** → **+ Add a tool** → **Model Context
 Protocol** → **LexScholar MCP** → **Select all**.
 
-Expected tools: `search_articles`, `compare_jurisdictions`, `get_article`,
-`get_article_fulltext`, `resolve_doi`, `list_sources`.
+Expected tools: `search_legal_scholarship`, `compare_jurisdictions`, `get_scholarship_article`,
+`get_scholarship_fulltext`, `resolve_doi`, `list_sources`.
 
 Recommended tool description:
 
@@ -66,7 +66,7 @@ Acik erisimli HUKUK LITERATURU (hakemli makale/doktrin) icin dokuz indeksi tek u
 
 Ask the agent:
 
-- *"Enerji yatirim tahkimi uzerine hakemli makale bul"* → `search_articles` with
+- *"Enerji yatirim tahkimi uzerine hakemli makale bul"* → `search_legal_scholarship` with
   `peer_reviewed_only`.
 - *"Stabilizasyon klozu Fransa, Brezilya ve Endonezya'da nasil tartisiliyor?"* →
   `compare_jurisdictions`.
