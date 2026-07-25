@@ -39,7 +39,7 @@ own native index — the contrast is the deliverable, not a merged ranking.
 | **SciELO** | `v440` ⊃ DIREITO/DERECHO | curated | **real body text** | 26,003 articles, 36 collections |
 | **HAL** (FR) | `domainAllCode_s:shs.droit` | `peerReviewing_s` flag | PDF + TEI | 236,486 / 26,422 OA |
 | **Dialnet** (ES) | `set=18` Ciencias jurídicas | mixed | ✗ discovery only | 95,402 |
-| **DergiPark** (TR) | curated law-journal setSpecs | unknown (mostly hakemli) | abstract + link | 7 curated law journals |
+| **DergiPark** (TR) | 19 verified law-journal setSpecs | unknown (mostly hakemli) | abstract + link | 19 Turkish law journals |
 | **OpenAIRE** | `fos=0505 law` | `isPeerReviewed` flag | link | 582,820 |
 | **Crossref** | — | — | — | DOI resolver |
 | **Unpaywall** | — | — | locator | DOI → open copy |

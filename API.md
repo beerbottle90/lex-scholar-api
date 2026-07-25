@@ -152,19 +152,30 @@ URL. Header id looks like `oai:dergipark.org.tr:article/1002051`.
 - **Rate limiting.** Roughly ten rapid requests earn a `429`; calls are spaced
   2 s.
 - **`ListSets` truncation.** DergiPark hosts thousands of journals but exposes
-  only 100 sets there. A `setSpec` still works when absent from that page —
-  verified with `auhfd`, `iuhfm`, `deuhfd` — so law journals are reached through
-  a curated, individually-verified list rather than enumeration.
+  only 100 sets there, and the response ends at `</ListSets>` with no
+  `resumptionToken` — the catalogue cannot be enumerated through OAI. A
+  `setSpec` still works when absent from that page, so coverage is a
+  **verified list of 19 law journals**, assembled from three independent routes
+  and then checked one code at a time: the law sets DergiPark does expose,
+  DOAJ's Turkish law-subject journals (homepage URL carries the slug) and
+  OpenAlex source records. Harvesting `ListRecords` to discover journals is
+  ineffective — 4,500 records surfaced only 9 distinct journals, because records
+  cluster by journal. The site's own search is not an option either:
+  `robots.txt` disallows `/search` for every agent.
 - **No free-text search** (inherent to OAI-PMH), so the journal set is the
   filter and matching happens client-side — same shape as Dialnet and Law Review
   Commons.
-- **Verify before adding a code.** `ashd` looks plausible but returns medical
-  articles; an unverified `setSpec` silently yields nothing.
+- **Verify before adding a code.** A plausible slug is not enough: `ybhd` looks
+  like a law code and is the Intensive Care Nursing journal, `ashd` likewise
+  returns medical articles. Both were caught during verification and excluded.
 - `earliestDatestamp` reports the current day, which is misleading — date-window
   queries do return older records (2015, 2020 and 2024 windows all did).
 
-Curated law journals: `maruhad`, `auhfd`, `iuhfm`, `deuhfd`, `iuihid`,
-`iuchkd`, `adaletdergisi`.
+Verified law journals (19) — 15 law faculty journals: `auhfd`, `ahbvuhfd`,
+`asbuhfd`, `andhd`, `duhfd`, `deuhfd`, `inuhfd`, `iuhfm`, `kouhfd`, `maruhad`,
+`neuhfd`, `shd`, `suhfd`, `yuhfd`, `kahd`; plus 4 subject journals: `iuchkd`
+(Ceza Hukuku ve Kriminoloji), `iuihid` (İdare Hukuku ve İlimleri),
+`adaletdergisi`, `ihad` (İslam Hukuku Araştırmaları).
 
 `peer_reviewed` is left `None`: most DergiPark journals are hakemli, but
 `oai_dc` carries no review-process field, so it is not asserted.

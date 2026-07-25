@@ -26,10 +26,17 @@ Two upstream limits, handled here rather than hidden:
 
 - **Rate limiting.** Roughly ten rapid requests earn a ``429``. Every call in
   this module is spaced by :data:`_DELAY`.
-- **``ListSets`` stops at 100 sets** with no ``resumptionToken``, so the full
-  journal list cannot be enumerated that way. However, a ``setSpec`` works even
-  when it is absent from that first page — verified with ``auhfd``, ``iuhfm``
-  and ``deuhfd`` — so law journals are addressed through the curated list below.
+- **``ListSets`` stops at 100 sets** with no ``resumptionToken`` (confirmed: the
+  response simply ends at ``</ListSets>``), so DergiPark's catalogue of
+  thousands of journals cannot be enumerated through OAI. A ``setSpec`` does
+  work when absent from that page, so coverage is built as a **verified list**
+  instead — see :data:`LAW_JOURNALS`.
+
+Coverage was assembled from three independent routes and then checked one code
+at a time: the law sets DergiPark does expose, DOAJ's Turkish law-subject
+journals (their homepage URL carries the DergiPark slug), and OpenAlex source
+records. Scraping the site's own search was never an option — DergiPark's
+``robots.txt`` disallows ``/search`` for every agent.
 """
 
 from __future__ import annotations
@@ -54,24 +61,55 @@ _NS = {"oai": "http://www.openarchives.org/OAI/2.0/", "dc": "http://purl.org/dc/
 _DELAY = 2.0
 _MAX_PAGES = 2
 
-# Turkish law journals, each setSpec confirmed live to return records.
-# Codes are stable DergiPark journal slugs. Extend as more are verified —
-# an unverified code silently yields nothing, so do not guess into this list.
+# Turkish law journals. **Every code below was individually confirmed live** to
+# return records — this list is not guessed.
+#
+# It has to be curated because ``ListSets`` truncates at 100 sets with no
+# resumptionToken, so the catalogue cannot be enumerated. Codes were assembled
+# from three independent routes and then verified one by one: the sets DergiPark
+# does expose, DOAJ's Turkish law-subject journals (their homepage URL carries
+# the DergiPark slug), and OpenAlex source records.
+#
+# Adding one: probe ``?verb=ListRecords&metadataPrefix=oai_dc&set=<code>`` and
+# read ``dc:source`` back. **Check what the journal actually is** — a plausible
+# slug is not enough. ``ybhd`` looks like a law code and is the Intensive Care
+# Nursing journal; ``ashd`` likewise returns medical articles. Both were caught
+# this way and excluded.
 LAW_JOURNALS: Dict[str, str] = {
-    "maruhad": "Marmara Üniversitesi Hukuk Fakültesi Hukuk Araştırmaları Dergisi",
+    # Law faculty journals
     "auhfd": "Ankara Üniversitesi Hukuk Fakültesi Dergisi",
-    "iuhfm": "İstanbul Üniversitesi Hukuk Fakültesi Mecmuası",
+    "ahbvuhfd": "Ankara Hacı Bayram Veli Üniversitesi Hukuk Fakültesi Dergisi",
+    "asbuhfd": "Ankara Sosyal Bilimler Üniversitesi Hukuk Fakültesi Dergisi",
+    "andhd": "Anadolu Üniversitesi Hukuk Fakültesi Dergisi",
+    "duhfd": "Dicle Üniversitesi Hukuk Fakültesi Dergisi",
     "deuhfd": "Dokuz Eylül Üniversitesi Hukuk Fakültesi Dergisi",
-    "iuihid": "İdare Hukuku ve İlimleri Dergisi",
+    "inuhfd": "İnönü Üniversitesi Hukuk Fakültesi Dergisi",
+    "iuhfm": "İstanbul Üniversitesi Hukuk Fakültesi Mecmuası",
+    "kouhfd": "Kocaeli Üniversitesi Hukuk Fakültesi Dergisi",
+    "maruhad": "Marmara Üniversitesi Hukuk Fakültesi Hukuk Araştırmaları Dergisi",
+    "neuhfd": "Necmettin Erbakan Üniversitesi Hukuk Fakültesi Dergisi",
+    "shd": "Sakarya Üniversitesi Hukuk Fakültesi Dergisi",
+    "suhfd": "Selçuk Üniversitesi Hukuk Fakültesi Dergisi",
+    "yuhfd": "Yeditepe Üniversitesi Hukuk Fakültesi Dergisi",
+    "kahd": "Karatekin Hukuk Dergisi",
+    # Subject journals
     "iuchkd": "Ceza Hukuku ve Kriminoloji Dergisi",
+    "iuihid": "İdare Hukuku ve İlimleri Dergisi",
     "adaletdergisi": "Adalet Dergisi",
+    "ihad": "İslam Hukuku Araştırmaları Dergisi",
 }
 
-# Vocabulary that suggests which journals to try first for a given question.
+# Vocabulary that decides which journals to try first. With nineteen journals
+# and a two-page-per-journal budget, picking well matters more than breadth.
 _TOPIC_HINTS: Dict[str, tuple] = {
-    "iuchkd": ("ceza", "kriminoloji", "suç", "criminal", "penal"),
-    "iuihid": ("idare", "idari", "administrative", "kamu"),
-    "adaletdergisi": ("yargı", "adalet", "muhakeme", "usul", "procedure"),
+    "iuchkd": ("ceza", "kriminoloji", "suç", "suc", "criminal", "penal", "infaz"),
+    "iuihid": ("idare", "idari", "administrative", "kamu", "imar", "ihale"),
+    "adaletdergisi": ("yargı", "yargi", "adalet", "muhakeme", "usul", "icra", "procedure"),
+    "ihad": ("islam", "fıkıh", "fikih", "şeriat", "seriat"),
+    # Commercial / energy questions land in the big faculty journals.
+    "maruhad": ("ticaret", "şirket", "sirket", "tahkim", "sözleşme", "sozlesme", "enerji"),
+    "auhfd": ("anayasa", "vergi", "milletlerarası", "milletlerarasi", "uluslararası"),
+    "iuhfm": ("deniz", "sigorta", "rekabet", "banka", "petrol", "maden"),
 }
 
 META = {
@@ -81,8 +119,8 @@ META = {
     "full_text": False,             # abstract + link to the article page
     "languages": ["tr", "en"],
     "countries": ["TR"],
-    "law_filter": "curated law-journal setSpecs",
-    "volume": "7 curated law journals (DergiPark hosts most Turkish journals)",
+    "law_filter": "19 verified law-journal setSpecs",
+    "volume": "19 verified Turkish law journals",
     "cost": "medium",
     "notes": "Official OAI-PMH — no key, no CAPTCHA, unlike the third-party "
              "literatur-mcp scraper. Rate limited: calls are spaced 2s.",
@@ -111,8 +149,9 @@ def pick_sets(query: str, limit: int = 3) -> List[str]:
             scored.append((hits, spec))
     scored.sort(reverse=True)
     chosen = [spec for _, spec in scored]
-    # Always include the broad faculty journals, which carry general doctrine.
-    for spec in ("maruhad", "auhfd", "iuhfm", "deuhfd"):
+    # Fall back to the largest general faculty journals, which carry the widest
+    # range of doctrine when the question matches no subject vocabulary.
+    for spec in ("maruhad", "auhfd", "iuhfm", "deuhfd", "suhfd", "shd"):
         if spec not in chosen:
             chosen.append(spec)
     return chosen[:limit]
