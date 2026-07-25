@@ -224,6 +224,29 @@ TOOLS: List[Dict[str, Any]] = [
 
 _TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 
+# Pre-rename tool names. Still accepted on tools/call, deliberately NOT
+# advertised in tools/list.
+#
+# A client that registered this server before the rename keeps calling the old
+# name, and nothing here can invalidate that cache: Copilot Studio stores the
+# tool name when the tool is added and only re-reads it if the tool is removed
+# and re-added. Answering the old name keeps such a client working, while
+# tools/list stays clean so nothing new registers a name that collides with
+# DergiPark's search_articles.
+_ALIASES = {
+    "search_articles": "search_legal_scholarship",
+    "get_article": "get_scholarship_article",
+    "get_article_fulltext": "get_scholarship_fulltext",
+}
+
+
+def _resolve_tool(name: Any) -> Optional[Dict[str, Any]]:
+    """Look a tool up by its current name, then by a pre-rename alias."""
+    tool = _TOOLS_BY_NAME.get(name)
+    if tool is None:
+        tool = _TOOLS_BY_NAME.get(_ALIASES.get(name, ""))
+    return tool
+
 
 def _public_tools() -> List[Dict[str, Any]]:
     return [{"name": t["name"], "description": t["description"],
@@ -267,7 +290,7 @@ def dispatch(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if method == "tools/call":
         name = params.get("name")
         args = params.get("arguments") or {}
-        tool = _TOOLS_BY_NAME.get(name)
+        tool = _resolve_tool(name)
         if tool is None:
             return _err(msg_id, -32602, "unknown tool: %s" % name)
         try:
