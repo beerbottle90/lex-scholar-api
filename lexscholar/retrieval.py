@@ -48,6 +48,7 @@ import os
 import re
 import sqlite3
 import struct
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -124,34 +125,70 @@ def _fts_query(raw: str, prefix: bool = False, join: str = "AND") -> str:
 # --------------------------------------------------------------------------- #
 # Embeddings backend (optional)                                                #
 # --------------------------------------------------------------------------- #
+# Semantic retrieval should be the normal state, not something an operator has to
+# remember to switch on at launch. When EMBEDDINGS_URL is unset the servers fall
+# back to a local Ollama, which is free, keyless and already the documented
+# setup. Reachability still decides: an unreachable default reports "off" with
+# the reason, exactly as an unset variable used to.
+_DEFAULT_URL = "http://127.0.0.1:11434/v1/embeddings"
+_DEFAULT_MODEL = "bge-m3"
+
+# Liveness is cached so that status calls and per-query checks do not each pay
+# for a network round trip.
+_PROBE_TTL = 60.0
+_probe_cache: Dict[str, Any] = {"at": 0.0, "ok": False, "error": ""}
+
+
+def embeddings_url() -> str:
+    return os.environ.get("EMBEDDINGS_URL") or _DEFAULT_URL
+
+
+def embeddings_model() -> str:
+    return os.environ.get("EMBEDDINGS_MODEL") or _DEFAULT_MODEL
+
+
+def _probe(force: bool = False) -> bool:
+    now = time.time()
+    if not force and now - _probe_cache["at"] < _PROBE_TTL:
+        return bool(_probe_cache["ok"])
+    try:
+        _embed(["ping"], timeout=20)
+        _probe_cache.update(at=now, ok=True, error="")
+    except Exception as exc:  # noqa: BLE001 - unreachable is a reportable state
+        _probe_cache.update(at=now, ok=False,
+                            error="%s: %s" % (type(exc).__name__, exc))
+    return bool(_probe_cache["ok"])
+
+
 def embeddings_available() -> bool:
-    return bool(os.environ.get("EMBEDDINGS_URL"))
+    return _probe()
 
 
 def embeddings_status() -> Dict[str, Any]:
-    if not embeddings_available():
+    source = "env" if os.environ.get("EMBEDDINGS_URL") else "default (local Ollama)"
+    if not _probe():
         return {
             "semantic": "off",
-            "reason": "EMBEDDINGS_URL not set — hybrid search degraded to "
-                      "lexical + fuzzy. Results are keyword matches, not "
-                      "conceptual matches.",
+            "endpoint": embeddings_url(),
+            "endpoint_source": source,
+            "reason": "Embeddings endpoint unreachable (%s) — hybrid search "
+                      "degraded to lexical + fuzzy. Results are keyword matches, "
+                      "not conceptual matches. Start it with: ollama serve && "
+                      "ollama pull %s" % (_probe_cache["error"], embeddings_model()),
         }
     return {
         "semantic": "on",
-        "model": os.environ.get("EMBEDDINGS_MODEL", "(server default)"),
+        "model": embeddings_model(),
+        "endpoint": embeddings_url(),
+        "endpoint_source": source,
         "note": "Cross-language retrieval only works if this model is multilingual.",
     }
 
 
 def _embed(texts: Sequence[str], timeout: int = 60) -> List[List[float]]:
     """Call an OpenAI-compatible /v1/embeddings endpoint. Raises on failure."""
-    url = os.environ.get("EMBEDDINGS_URL")
-    if not url:
-        raise RuntimeError("EMBEDDINGS_URL is not set")
-    payload: Dict[str, Any] = {"input": list(texts)}
-    model = os.environ.get("EMBEDDINGS_MODEL")
-    if model:
-        payload["model"] = model
+    url = os.environ.get("EMBEDDINGS_URL") or _DEFAULT_URL
+    payload: Dict[str, Any] = {"input": list(texts), "model": embeddings_model()}
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
@@ -597,7 +634,7 @@ def semantic_rerank(
     out.extend(dict(d) for d in tail)
     return {
         "method": "semantic",
-        "model": os.environ.get("EMBEDDINGS_MODEL", "(server default)"),
+        "model": embeddings_model(),
         "embedded": len(head),
         "note": "Ranked by cosine similarity. `_similarity` is a real score "
                 "(0-1); cross-language matching depends on the model being "

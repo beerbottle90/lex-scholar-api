@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ._http import LexScholarError
 from .client import LexScholarClient
-from .retrieval import semantic_rerank
+from .retrieval import embeddings_status, semantic_rerank
 
 SERVER_NAME = "lex-scholar-api"
 SERVER_VERSION = "0.1.0"
@@ -140,6 +140,22 @@ _FILTERS = {
                                           "Excludes preprints and US student-edited law reviews."},
     "open_access_only": _BOOL,
 }
+
+
+def _t_server_status(args: Dict[str, Any]) -> Any:
+    """What this server is, and whether semantic ranking is actually live."""
+    return {
+        "server": "lex-scholar-api",
+        "source": "nine open-access legal scholarship indexes - public, no auth",
+        "mode": "passthrough + local reranking (no local corpus)",
+        "known_upstream_quirks": [
+            'Nine indexes each rank against their own corpus, so the merged order is not comparable between sources. Results are rescored locally with one model; see `ranking.method`.',
+            "Query in the language of the target jurisdiction - these indexes match the article's own words.",
+            'Scholarship is a SECONDARY source; never cite it as the law.',
+        ],
+        **embeddings_status(),
+    }
+
 
 TOOLS: List[Dict[str, Any]] = [
     {
@@ -265,6 +281,17 @@ TOOLS: List[Dict[str, Any]] = [
                        "the live OpenAlex rate-limit budget.",
         "inputSchema": {"type": "object", "properties": {}},
         "handler": _t_list_sources,
+    },
+    {
+        "name": "server_status",
+        "description": (
+            "What this server talks to, whether semantic ranking is "
+            "currently live, and the upstream quirks worth defending "
+            "against. Call it when results look wrong, to tell a degraded "
+            "ranking channel apart from a genuinely empty result set."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": _t_server_status,
     },
 ]
 
