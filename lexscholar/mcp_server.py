@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ._http import LexScholarError
 from .client import LexScholarClient
+from .retrieval import semantic_rerank
 
 SERVER_NAME = "lex-scholar-api"
 SERVER_VERSION = "0.1.0"
@@ -35,8 +36,21 @@ _client = LexScholarClient()
 # --------------------------------------------------------------------------- #
 # Tools                                                                        #
 # --------------------------------------------------------------------------- #
+# Nine indexes, nine relevance models, one merged list. Each source ranks
+# sensibly against its own corpus, but "rank 1 in DOAJ" and "rank 1 in OpenAlex"
+# are not comparable, so the merged head is close to arbitrary. Pulling a wider
+# pool and scoring every candidate against the query with one model is what
+# makes the federated list coherent.
+_POOL_MULTIPLIER = 3
+_POOL_MAX = 120
+
+
 def _t_search_articles(a: Dict[str, Any]) -> Any:
-    return _client.search(
+    limit = int(a.get("limit", 20))
+    rank = bool(a.get("rerank", True))
+    pool = min(max(limit * _POOL_MULTIPLIER, limit), _POOL_MAX) if rank else limit
+
+    out = _client.search(
         a.get("query", ""),
         source=a.get("source", "auto"),
         jurisdiction=a.get("jurisdiction"),
@@ -46,9 +60,31 @@ def _t_search_articles(a: Dict[str, Any]) -> Any:
         peer_reviewed_only=bool(a.get("peer_reviewed_only", False)),
         open_access_only=bool(a.get("open_access_only", False)),
         full_text_only=bool(a.get("full_text_only", False)),
-        limit=int(a.get("limit", 20)),
+        limit=pool,
         max_sources=a.get("max_sources"),
     )
+    if not rank or not isinstance(out, dict):
+        return out
+
+    ranked = semantic_rerank(
+        a.get("query", ""),
+        out.get("results") or [],
+        fields=("title", "abstract", "journal"),
+        limit=limit,
+    )
+    out["results"] = ranked["results"]
+    out["returned"] = len(ranked["results"])
+    ranking = {"method": ranked["method"], "candidates_considered": pool,
+               "note": ranked.get("note") or ranked.get("warning")}
+    if "model" in ranked:
+        ranking["model"] = ranked["model"]
+    out["ranking"] = ranking
+    out["ranking_warning"] = (
+        "Results were reordered locally across all sources. Each index ranks "
+        "only against its own corpus, so the raw federated order is not "
+        "comparable between sources. Pass rerank=false for the unmerged order."
+    )
+    return out
 
 
 def _t_compare_jurisdictions(a: Dict[str, Any]) -> Any:
@@ -133,6 +169,16 @@ TOOLS: List[Dict[str, Any]] = [
                 "full_text_only": {"type": "boolean", "default": False,
                                    "description": "Only sources that can return body text (SciELO, HAL)."},
                 "limit": {"type": "integer", "default": 20},
+                "rerank": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": (
+                        "Reorder results by relevance before returning them. "
+                        "Semantic when an embeddings backend is configured, BM25 "
+                        "otherwise; `ranking.method` in the response says which ran. "
+                        "Set false to inspect the raw upstream order."
+                    ),
+                },
                 "max_sources": {"type": "integer", "description": "Cap how many indexes are queried."},
                 **_FILTERS,
             },
